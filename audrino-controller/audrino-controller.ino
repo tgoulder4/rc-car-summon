@@ -108,30 +108,32 @@ void loop() {
 }
 // Motor control functions
 void moveForward() {
-  digitalWrite(IN1_PIN, HIGH);
-  digitalWrite(IN2_PIN, LOW);
-  digitalWrite(IN3_PIN, HIGH);
-  digitalWrite(IN4_PIN, LOW);
-}
-
-void moveBackward() {
   digitalWrite(IN1_PIN, LOW);
   digitalWrite(IN2_PIN, HIGH);
   digitalWrite(IN3_PIN, LOW);
   digitalWrite(IN4_PIN, HIGH);
 }
 
-void turnLeft() {
-  digitalWrite(IN1_PIN, HIGH);
+void moveBackward() {
+
+    digitalWrite(IN1_PIN, HIGH);
   digitalWrite(IN2_PIN, LOW);
-  digitalWrite(IN3_PIN, LOW);
+  digitalWrite(IN3_PIN, HIGH);
+  digitalWrite(IN4_PIN, LOW);
+}
+
+void turnLeft() {
+  digitalWrite(IN1_PIN, LOW);
+  digitalWrite(IN2_PIN, LOW);
+  digitalWrite(IN3_PIN, HIGH);
   digitalWrite(IN4_PIN, LOW);
 }
 
 void turnRight() {
-  digitalWrite(IN1_PIN, LOW);
+
+    digitalWrite(IN1_PIN, HIGH);
   digitalWrite(IN2_PIN, LOW);
-  digitalWrite(IN3_PIN, HIGH);
+  digitalWrite(IN3_PIN, LOW);
   digitalWrite(IN4_PIN, LOW);
 }
 
