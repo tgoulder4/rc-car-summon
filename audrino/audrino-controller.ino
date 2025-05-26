@@ -1,220 +1,143 @@
-#include <ros.h>
-#include <std_msgs/String.h>
-#include <std_msgs/Float32.h>
-#include <std_msgs/Bool.h>
+/*
+ * This ESP8266 NodeMCU code was developed by newbiely.com
+ *
+ * This ESP8266 NodeMCU code is made available for public use without any restriction
+ *
+ * For comprehensive instructions and wiring diagrams, please visit:
+ * https://newbiely.com/tutorials/esp8266/esp8266-car
+ */
 
-#define IN1_PIN 2
-#define IN2_PIN 3
-#define IN3_PIN 4
-#define IN4_PIN 5
-#define TRIG_PIN D5
-#define ECHO_PIN D6
+#include <DIYables_IRcontroller.h>  // DIYables_IRcontroller library
+#include <ESP8266WebServer.h>
+#include <ESP8266WiFi.h>
 
-ros::NodeHandle nh;
+const char* ssid = "TYE-LAPTOP 6635";
+const char* password = "X3r3+172";
+const int trigPin = 5;
+const int echoPin = 16;
 
-float filterArray[20];
-float distance_cm;
-unsigned long lastSensorPublishTime = 0;
-const int sensorPublishInterval = 200;
-bool obstacleDetected = false;
-const float OBSTACLE_THRESHOLD = 30.0;
+#define IR_RECEIVER_PIN D1  // The ESP8266 pin connected to IR receiver
+#define IN1_PIN D2          // The ESP8266 pin connected to the IN1 pin L298N
+#define IN2_PIN D5          // The ESP8266 pin connected to the IN2 pin L298N
+#define IN3_PIN D6          // The ESP8266 pin connected to the IN3 pin L298N
+#define IN4_PIN D7          // The ESP8266 pin connected to the IN4 pin L298N
 
-void moveForward();
-void moveBackward();
-void turnLeft();
-void turnRight();
-void stopMotors();
-float ultrasonicMeasure();
-float getFilteredDistance();
+#define BUTTON RST
 
-std_msgs::Float32 distance_msg;
-std_msgs::Bool obstacle_msg;
-ros::Publisher distancePub("distance_sensor", &distance_msg);
-ros::Publisher obstaclePub("obstacle_detected", &obstacle_msg);
-
-void commandCallback(const std_msgs::String& cmd_msg) {
-  String command = cmd_msg.data;
-  
-  Serial.print("Received command: ");
-  Serial.println(command);
-  
-  if (command == "UP") {
-    Serial.println("Processing UP command");
-    moveForward();
-  } 
-  else if (command == "DOWN") {
-    Serial.println("Processing DOWN command");
-    moveBackward();
-  } 
-  else if (command == "LEFT") {
-    Serial.println("Processing LEFT command");
-    turnLeft();
-  } 
-  else if (command == "RIGHT") {
-    Serial.println("Processing RIGHT command");
-    turnRight();
-  } 
-  else if (command == "STOP") {
-    Serial.println("Processing STOP command");
-    stopMotors();
-  }
-  else {
-    Serial.print("Unknown command: ");
-    Serial.println(command);
-  }
-}
-
-ros::Subscriber<std_msgs::String> sub("robot_commands", &commandCallback);
+DIYables_IRcontroller_17 irController(IR_RECEIVER_PIN, 200);  // debounce time is 200ms
+ESP8266WebServer server(80);
 
 void setup() {
-  Serial.begin(57600);
-  Serial.println("Arduino ROS controller starting with ultrasonic sensor...");
+  // CAR_moveForward();
   
+  Serial.begin(9600);
+  irController.begin();
+
   pinMode(IN1_PIN, OUTPUT);
   pinMode(IN2_PIN, OUTPUT);
   pinMode(IN3_PIN, OUTPUT);
   pinMode(IN4_PIN, OUTPUT);
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
-  
-  Serial.println("Initializing ROS node");
-  nh.initNode();
-  nh.subscribe(sub);
-  nh.advertise(distancePub);
-  nh.advertise(obstaclePub);
-  
-  Serial.println("ROS node initialized");
-  Serial.println("Subscribed to robot_commands topic");
-  Serial.println("Publishing to distance_sensor and obstacle_detected topics");
-  
+    // Connect to Wi-Fi
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid, password);
+
+  // Wait for connection
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+ // Define HTTP endpoints
+server.on("/forward", HTTP_GET, []() {
+  Serial.println("Received /forward request");
+  // stopMotors();
+  moveForward();
+  server.send(200, "text/plain", "Moving forward");
+});
+
+server.on("/backward", HTTP_GET, []() {
+  Serial.println("Received /backward request");
+  // stopMotors();
+  moveBackward();
+  server.send(200, "text/plain", "Moving backward");
+});
+
+server.on("/left", HTTP_GET, []() {
+  Serial.println("Received /left request");
+  // stopMotors();
+  turnLeft();
+  server.send(200, "text/plain", "Turning left");
+});
+
+server.on("/right", HTTP_GET, []() {
+  Serial.println("Received /right request");
+  // stopMotors();
+  turnRight();
+  server.send(200, "text/plain", "Turning right");
+});
+
+server.on("/stop", HTTP_GET, []() {
+  Serial.println("Received /stop request");
   stopMotors();
-  
-  Serial.println("Setup complete, entering main loop");
+  server.send(200, "text/plain", "Stopping");
+});
+
+server.on("/summon", HTTP_GET, []() {
+  Serial.println("Received /summon request");
+  // Implement summon functionality here
+  server.send(200, "text/plain", "Summoning");
+});
+  server.begin();
+  Serial.println("HTTP server started");
 }
 
 void loop() {
-  unsigned long currentMillis = millis();
-  
-  if (currentMillis - lastSensorPublishTime >= sensorPublishInterval) {
-    lastSensorPublishTime = currentMillis;
-    
-    distance_cm = getFilteredDistance();
-    
-    Serial.print("Distance: ");
-    Serial.print(distance_cm);
-    Serial.println(" cm");
-    
-    obstacleDetected = (distance_cm < OBSTACLE_THRESHOLD && distance_cm > 0);
-    
-    distance_msg.data = distance_cm;
-    obstacle_msg.data = obstacleDetected;
-    
-    distancePub.publish(&distance_msg);
-    obstaclePub.publish(&obstacle_msg);
-    
-    if (obstacleDetected) {
-      Serial.println("OBSTACLE DETECTED! Stopping motors");
-      stopMotors();
-    }
+    if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Wi-Fi disconnected");
+    // Attempt to reconnect or handle accordingly
   }
-  
-  nh.spinOnce();
-  delay(10);
+    server.handleClient();
 }
-
-float getFilteredDistance() {
-  Serial.println("Taking multiple measurements for filtering");
-  
-  for (int sample = 0; sample < 20; sample++) {
-    filterArray[sample] = ultrasonicMeasure();
-    delay(30);
-  }
-  
-  Serial.println("Sorting measurements");
-  for (int i = 0; i < 19; i++) {
-    for (int j = i + 1; j < 20; j++) {
-      if (filterArray[i] > filterArray[j]) {
-        float swap = filterArray[i];
-        filterArray[i] = filterArray[j];
-        filterArray[j] = swap;
-      }
-    }
-  }
-  
-  Serial.println("Calculating average of middle samples");
-  float sum = 0;
-  for (int sample = 5; sample < 15; sample++) {
-    sum += filterArray[sample];
-  }
-  
-  return sum / 10;
-}
-
-float ultrasonicMeasure() {
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
-  
-  float duration_us = pulseIn(ECHO_PIN, HIGH);
-  float distance_cm = 0.017 * duration_us;
-  
-  return distance_cm;
-}
-
+// Motor control functions
 void moveForward() {
-  Serial.println("Moving forward");
   digitalWrite(IN1_PIN, HIGH);
   digitalWrite(IN2_PIN, LOW);
   digitalWrite(IN3_PIN, HIGH);
   digitalWrite(IN4_PIN, LOW);
-  Serial.println("Waiting 1000ms");
-  delay(1000);
-  Serial.println("Forward movement complete, stopping motors");
-  stopMotors();
 }
 
 void moveBackward() {
-  Serial.println("Moving backward");
   digitalWrite(IN1_PIN, LOW);
   digitalWrite(IN2_PIN, HIGH);
   digitalWrite(IN3_PIN, LOW);
   digitalWrite(IN4_PIN, HIGH);
-  Serial.println("Waiting 1000ms");
-  delay(1000);
-  Serial.println("Backward movement complete, stopping motors");
-  stopMotors();
 }
 
 void turnLeft() {
-  Serial.println("Turning left");
-  digitalWrite(IN1_PIN, LOW);
-  digitalWrite(IN2_PIN, HIGH);
-  digitalWrite(IN3_PIN, HIGH);
-  digitalWrite(IN4_PIN, LOW);
-  Serial.println("Waiting 500ms");
-  delay(500);
-  Serial.println("Left turn complete, stopping motors");
-  stopMotors();
-}
-
-void turnRight() {
-  Serial.println("Turning right");
   digitalWrite(IN1_PIN, HIGH);
   digitalWrite(IN2_PIN, LOW);
   digitalWrite(IN3_PIN, LOW);
-  digitalWrite(IN4_PIN, HIGH);
-  Serial.println("Waiting 500ms");
-  delay(500);
-  Serial.println("Right turn complete, stopping motors");
-  stopMotors();
+  digitalWrite(IN4_PIN, LOW);
+}
+
+void turnRight() {
+  digitalWrite(IN1_PIN, LOW);
+  digitalWrite(IN2_PIN, LOW);
+  digitalWrite(IN3_PIN, HIGH);
+  digitalWrite(IN4_PIN, LOW);
 }
 
 void stopMotors() {
-  Serial.println("Stopping motors");
   digitalWrite(IN1_PIN, LOW);
   digitalWrite(IN2_PIN, LOW);
   digitalWrite(IN3_PIN, LOW);
   digitalWrite(IN4_PIN, LOW);
-  Serial.println("Motors stopped");
 }
-
